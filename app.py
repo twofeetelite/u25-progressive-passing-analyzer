@@ -5,50 +5,44 @@ import io
 @st.cache_data
 def load_preloaded_data():
     """Load preloaded Big 5 data from CSV file"""
+    import os
+    
+    # Check if file exists
+    if not os.path.exists('big5_data.csv'):
+        st.error("❌ big5_data.csv not found in the app directory")
+        st.info("💡 Please uncheck 'Use preloaded data' and upload your CSV file manually")
+        return pd.DataFrame()
+    
     try:
-        # Try different file paths
-        possible_paths = ['big5_data.csv', './big5_data.csv', 'data/big5_data.csv']
+        # Read the entire file as text first to analyze structure
+        with open('big5_data.csv', 'r', encoding='utf-8') as f:
+            lines = f.readlines()
         
-        df = None
+        # Find the header row (contains Player, Age, Pos, etc.)
+        header_line_idx = None
+        for i, line in enumerate(lines):
+            if 'Player' in line and 'Age' in line and 'Pos' in line:
+                header_line_idx = i
+                break
         
-        for path in possible_paths:
-            try:
-                if os.path.exists(path):
-                    # Read the entire file as text first to analyze structure
-                    with open(path, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                    
-                    # Find the header row (contains Player, Age, Pos, etc.)
-                    header_line_idx = None
-                    for i, line in enumerate(lines):
-                        if 'Player' in line and 'Age' in line and 'Pos' in line:
-                            header_line_idx = i
-                            break
-                    
-                    if header_line_idx is not None:
-                        # Read CSV starting from the header line
-                        df = pd.read_csv(path, skiprows=header_line_idx)
-                    else:
-                        # Fallback: try to read normally and fix manually
-                        df = pd.read_csv(path, header=None)
-                        # Look for the row with proper column names
-                        for idx in range(min(10, len(df))):
-                            row_values = df.iloc[idx].astype(str).tolist()
-                            if 'Player' in row_values and 'Age' in row_values:
-                                # Set this row as column names
-                                df.columns = df.iloc[idx]
-                                # Remove rows up to and including the header row
-                                df = df.iloc[idx+1:].reset_index(drop=True)
-                                break
-                        else:
-                            continue
+        if header_line_idx is not None:
+            # Read CSV starting from the header line
+            df = pd.read_csv('big5_data.csv', skiprows=header_line_idx)
+        else:
+            # Fallback: try to read normally and fix manually
+            df = pd.read_csv('big5_data.csv', header=None)
+            # Look for the row with proper column names
+            for idx in range(min(10, len(df))):
+                row_values = df.iloc[idx].astype(str).tolist()
+                if 'Player' in row_values and 'Age' in row_values:
+                    # Set this row as column names
+                    df.columns = df.iloc[idx]
+                    # Remove rows up to and including the header row
+                    df = df.iloc[idx+1:].reset_index(drop=True)
                     break
-                    
-            except Exception:
-                continue
-        
-        if df is None:
-            return pd.DataFrame()
+            else:
+                st.error("❌ Could not find proper data structure in CSV file")
+                return pd.DataFrame()
         
         # Clean the data
         if 'Player' in df.columns:
@@ -65,16 +59,27 @@ def load_preloaded_data():
         prgdist_candidates = [col for col in df.columns if 'prg' in col.lower() or 'prog' in col.lower()]
         if prgdist_candidates:
             df['PrgDist'] = pd.to_numeric(df[prgdist_candidates[0]], errors='coerce')
+        else:
+            st.error("❌ No progressive distance column found in the data")
+            return pd.DataFrame()
         
         # Handle league information
         if 'Comp' in df.columns:
             df['League'] = df['Comp']
         elif 'Squad' in df.columns:
             df['League'] = df['Squad'].apply(infer_league_from_squad)
+        else:
+            df['League'] = 'Unknown'
+        
+        if len(df) == 0:
+            st.error("❌ No valid data found after processing")
+            return pd.DataFrame()
         
         return df
         
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Error loading CSV file: {str(e)}")
+        st.info("💡 Please try uploading your file manually instead")
         return pd.DataFrame()
 
 def infer_league_from_squad(squad_name):
@@ -186,84 +191,34 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
     if df.empty:
         return pd.DataFrame()
     
-    # Show initial data info
-    st.write(f"📊 **Total players in dataset:** {len(df)}")
+    # Check each required column and filter step by step
+    if 'Age' not in df.columns:
+        st.error("❌ Age column not found in dataset")
+        return pd.DataFrame()
     
-    # Debug: Show available columns and data types
-    st.write("🔍 **Debug Information:**")
-    st.write("**Available columns:**", df.columns.tolist())
-    st.write("**Data types:**", df.dtypes.to_dict())
+    if '90s' not in df.columns:
+        st.error("❌ 90s column not found in dataset")
+        return pd.DataFrame()
+        
+    if 'Pos' not in df.columns:
+        st.error("❌ Position column not found in dataset")
+        return pd.DataFrame()
+        
+    if 'PrgDist' not in df.columns:
+        st.error("❌ Progressive Distance column not found in dataset")
+        return pd.DataFrame()
     
-    # Show first few rows
-    st.write("**First 3 rows of data:**")
-    st.dataframe(df.head(3))
+    # Apply filters
+    filtered_df = df[
+        (df['Age'] < max_age) &  # U-25 players
+        (df['90s'] >= min_90s) &  # At least specified 90s
+        (df['Pos'].str.startswith('MF', na=False)) &  # Primary position is MF
+        (df['PrgDist'].notna()) &  # Has progressive distance data
+        (df['PrgDist'] > 0)  # Valid progressive distance
+    ].copy()
     
-    # Check each column individually
-    required_columns = ['Age', '90s', 'Pos', 'PrgDist']
-    
-    for col in required_columns:
-        if col in df.columns:
-            st.write(f"✅ Column '{col}' found")
-            st.write(f"   - Sample values: {df[col].dropna().head(3).tolist()}")
-            st.write(f"   - Data type: {df[col].dtype}")
-            st.write(f"   - Non-null count: {df[col].count()}/{len(df)}")
-        else:
-            st.error(f"❌ Column '{col}' NOT found")
-            # Look for similar column names
-            similar_cols = [c for c in df.columns if col.lower() in str(c).lower()]
-            if similar_cols:
-                st.write(f"   - Similar columns found: {similar_cols}")
-    
-    # Try filtering step by step to identify which condition fails
-    st.write("🧪 **Testing filter conditions:**")
-    
-    try:
-        # Test Age filter
-        if 'Age' in df.columns:
-            age_filter = df['Age'] < max_age
-            st.write(f"✅ Age filter: {age_filter.sum()} players under {max_age}")
-        else:
-            st.error("❌ Cannot apply age filter - 'Age' column missing")
-            return pd.DataFrame()
-        
-        # Test 90s filter  
-        if '90s' in df.columns:
-            nineties_filter = df['90s'] >= min_90s
-            st.write(f"✅ 90s filter: {nineties_filter.sum()} players with {min_90s}+ 90s")
-        else:
-            st.error("❌ Cannot apply 90s filter - '90s' column missing")
-            return pd.DataFrame()
-        
-        # Test Position filter
-        if 'Pos' in df.columns:
-            pos_filter = df['Pos'].str.startswith('MF', na=False)
-            st.write(f"✅ Position filter: {pos_filter.sum()} players with position starting 'MF'")
-        else:
-            st.error("❌ Cannot apply position filter - 'Pos' column missing")
-            return pd.DataFrame()
-        
-        # Test PrgDist filter
-        if 'PrgDist' in df.columns:
-            prgdist_filter = (df['PrgDist'].notna()) & (df['PrgDist'] > 0)
-            st.write(f"✅ PrgDist filter: {prgdist_filter.sum()} players with valid progressive distance")
-        else:
-            st.error("❌ Cannot apply PrgDist filter - 'PrgDist' column missing")
-            return pd.DataFrame()
-        
-        # Combine all filters
-        combined_filter = age_filter & nineties_filter & pos_filter & prgdist_filter
-        st.write(f"📊 **Combined filter result: {combined_filter.sum()} players qualify**")
-        
-        if combined_filter.sum() == 0:
-            st.warning("⚠️ No players match all criteria")
-            return pd.DataFrame()
-        
-        # Apply the filter
-        filtered_df = df[combined_filter].copy()
-        
-    except Exception as e:
-        st.error(f"❌ Error during filtering: {str(e)}")
-        st.write("**Full error details:**", str(e))
+    if filtered_df.empty:
+        st.warning("⚠️ No players match the criteria")
         return pd.DataFrame()
     
     # Sort by Progressive Distance (highest first)
@@ -271,8 +226,6 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
     
     # Add ranking
     filtered_df['Rank'] = range(1, len(filtered_df) + 1)
-    
-    st.success(f"✅ Successfully filtered {len(filtered_df)} qualifying players!")
     
     return filtered_df
 
