@@ -175,17 +175,81 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
     # Show initial data info
     st.write(f"📊 **Total players in dataset:** {len(df)}")
     
-    # Filter criteria
-    filtered_df = df[
-        (df['Age'] < max_age) &  # U-25 players
-        (df['90s'] >= min_90s) &  # At least specified 90s
-        (df['Pos'].str.startswith('MF', na=False)) &  # Primary position is MF (excludes "DF,MF", "FW,MF")
-        (df['PrgDist'].notna()) &  # Has progressive distance data
-        (df['PrgDist'] > 0)  # Valid progressive distance
-    ].copy()
+    # Debug: Show available columns and data types
+    st.write("🔍 **Debug Information:**")
+    st.write("**Available columns:**", df.columns.tolist())
+    st.write("**Data types:**", df.dtypes.to_dict())
     
-    if filtered_df.empty:
-        st.warning("⚠️ No players match the criteria")
+    # Show first few rows
+    st.write("**First 3 rows of data:**")
+    st.dataframe(df.head(3))
+    
+    # Check each column individually
+    required_columns = ['Age', '90s', 'Pos', 'PrgDist']
+    
+    for col in required_columns:
+        if col in df.columns:
+            st.write(f"✅ Column '{col}' found")
+            st.write(f"   - Sample values: {df[col].dropna().head(3).tolist()}")
+            st.write(f"   - Data type: {df[col].dtype}")
+            st.write(f"   - Non-null count: {df[col].count()}/{len(df)}")
+        else:
+            st.error(f"❌ Column '{col}' NOT found")
+            # Look for similar column names
+            similar_cols = [c for c in df.columns if col.lower() in str(c).lower()]
+            if similar_cols:
+                st.write(f"   - Similar columns found: {similar_cols}")
+    
+    # Try filtering step by step to identify which condition fails
+    st.write("🧪 **Testing filter conditions:**")
+    
+    try:
+        # Test Age filter
+        if 'Age' in df.columns:
+            age_filter = df['Age'] < max_age
+            st.write(f"✅ Age filter: {age_filter.sum()} players under {max_age}")
+        else:
+            st.error("❌ Cannot apply age filter - 'Age' column missing")
+            return pd.DataFrame()
+        
+        # Test 90s filter  
+        if '90s' in df.columns:
+            nineties_filter = df['90s'] >= min_90s
+            st.write(f"✅ 90s filter: {nineties_filter.sum()} players with {min_90s}+ 90s")
+        else:
+            st.error("❌ Cannot apply 90s filter - '90s' column missing")
+            return pd.DataFrame()
+        
+        # Test Position filter
+        if 'Pos' in df.columns:
+            pos_filter = df['Pos'].str.startswith('MF', na=False)
+            st.write(f"✅ Position filter: {pos_filter.sum()} players with position starting 'MF'")
+        else:
+            st.error("❌ Cannot apply position filter - 'Pos' column missing")
+            return pd.DataFrame()
+        
+        # Test PrgDist filter
+        if 'PrgDist' in df.columns:
+            prgdist_filter = (df['PrgDist'].notna()) & (df['PrgDist'] > 0)
+            st.write(f"✅ PrgDist filter: {prgdist_filter.sum()} players with valid progressive distance")
+        else:
+            st.error("❌ Cannot apply PrgDist filter - 'PrgDist' column missing")
+            return pd.DataFrame()
+        
+        # Combine all filters
+        combined_filter = age_filter & nineties_filter & pos_filter & prgdist_filter
+        st.write(f"📊 **Combined filter result: {combined_filter.sum()} players qualify**")
+        
+        if combined_filter.sum() == 0:
+            st.warning("⚠️ No players match all criteria")
+            return pd.DataFrame()
+        
+        # Apply the filter
+        filtered_df = df[combined_filter].copy()
+        
+    except Exception as e:
+        st.error(f"❌ Error during filtering: {str(e)}")
+        st.write("**Full error details:**", str(e))
         return pd.DataFrame()
     
     # Sort by Progressive Distance (highest first)
@@ -193,6 +257,8 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
     
     # Add ranking
     filtered_df['Rank'] = range(1, len(filtered_df) + 1)
+    
+    st.success(f"✅ Successfully filtered {len(filtered_df)} qualifying players!")
     
     return filtered_df
 
