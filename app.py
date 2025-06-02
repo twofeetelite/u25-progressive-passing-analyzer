@@ -26,7 +26,32 @@ def load_preloaded_data():
             try:
                 if os.path.exists(path):
                     st.write(f"✅ Found file at: {path}")
-                    df = pd.read_csv(path)
+                    
+                    # Read the raw file to handle FBRef's complex header structure
+                    raw_df = pd.read_csv(path)
+                    st.write("📋 **Raw CSV structure:**")
+                    st.write("First 5 rows:", raw_df.head())
+                    
+                    # Find the actual header row (look for row with 'Age', '90s', etc.)
+                    header_row_idx = None
+                    for idx, row in raw_df.iterrows():
+                        row_values = [str(val).strip() for val in row.values if pd.notna(val)]
+                        if any(col in row_values for col in ['Age', '90s', 'Pos', 'Player']):
+                            header_row_idx = idx
+                            st.write(f"✅ Found header row at index: {idx}")
+                            st.write(f"Header values: {row_values}")
+                            break
+                    
+                    if header_row_idx is not None:
+                        # Re-read with correct header
+                        df = pd.read_csv(path, header=header_row_idx)
+                        st.write("✅ Successfully parsed with correct header")
+                        st.write("New columns:", df.columns.tolist())
+                    else:
+                        # Fallback: use the raw data and try to clean it
+                        df = raw_df.copy()
+                        st.warning("⚠️ Could not find standard header row, using raw data")
+                    
                     successful_path = path
                     break
                 else:
@@ -40,17 +65,31 @@ def load_preloaded_data():
         
         st.success(f"✅ Successfully loaded data from: {successful_path}")
         
+        # Clean the data
+        # Remove any completely empty rows
+        df = df.dropna(how='all')
+        
+        # Remove rows where the first column (usually Player) is NaN or contains header text
+        if 'Player' in df.columns:
+            df = df[df['Player'].notna()]
+            df = df[df['Player'] != 'Player']  # Remove header repeats
+        
         # Convert numeric columns
         numeric_cols = ['Age', '90s', 'PrgDist', 'PrgP']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Ensure League column exists (infer from squad if needed)
-        if 'League' not in df.columns and 'Squad' in df.columns:
+        # Handle league information
+        if 'Comp' in df.columns:
+            df['League'] = df['Comp']
+        elif 'Squad' in df.columns and 'League' not in df.columns:
             df['League'] = df['Squad'].apply(infer_league_from_squad)
+        elif 'League' not in df.columns:
+            df['League'] = 'Unknown'
         
-        st.write(f"📊 Loaded {len(df)} players from preloaded data")
+        st.write(f"📊 Final dataset: {len(df)} players")
+        st.write("📋 **Final columns:**", df.columns.tolist())
         
         return df
         
