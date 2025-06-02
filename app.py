@@ -6,8 +6,39 @@ import io
 def load_preloaded_data():
     """Load preloaded Big 5 data from CSV file"""
     try:
-        # Load the preloaded Big 5 data
-        df = pd.read_csv('big5_data.csv')
+        # Debug: Check if file exists and list files
+        import os
+        st.write("🔍 **Debug Info:**")
+        st.write(f"Current working directory: {os.getcwd()}")
+        st.write(f"Files in directory: {os.listdir('.')}")
+        
+        # Try different file paths
+        possible_paths = [
+            'big5_data.csv',
+            './big5_data.csv',
+            'data/big5_data.csv'
+        ]
+        
+        df = None
+        successful_path = None
+        
+        for path in possible_paths:
+            try:
+                if os.path.exists(path):
+                    st.write(f"✅ Found file at: {path}")
+                    df = pd.read_csv(path)
+                    successful_path = path
+                    break
+                else:
+                    st.write(f"❌ File not found at: {path}")
+            except Exception as e:
+                st.write(f"❌ Error reading {path}: {e}")
+        
+        if df is None:
+            st.error("❌ Could not find big5_data.csv in any expected location")
+            return pd.DataFrame()
+        
+        st.success(f"✅ Successfully loaded data from: {successful_path}")
         
         # Convert numeric columns
         numeric_cols = ['Age', '90s', 'PrgDist', 'PrgP']
@@ -19,12 +50,17 @@ def load_preloaded_data():
         if 'League' not in df.columns and 'Squad' in df.columns:
             df['League'] = df['Squad'].apply(infer_league_from_squad)
         
+        st.write(f"📊 Loaded {len(df)} players from preloaded data")
+        
         return df
-    except FileNotFoundError:
-        st.error("❌ Big 5 data file not found. Please upload your own data.")
-        return pd.DataFrame()
+        
     except Exception as e:
         st.error(f"❌ Error loading preloaded data: {e}")
+        st.write("**Troubleshooting tips:**")
+        st.write("1. Make sure 'big5_data.csv' is in your GitHub repo root directory")
+        st.write("2. Check that the file name is exactly 'big5_data.csv' (case sensitive)")
+        st.write("3. Verify the CSV file is properly formatted")
+        st.write("4. Try unchecking 'Use preloaded data' and upload manually")
         return pd.DataFrame()
 
 def infer_league_from_squad(squad_name):
