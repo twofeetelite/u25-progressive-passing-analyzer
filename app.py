@@ -6,18 +6,11 @@ import io
 def load_preloaded_data():
     """Load preloaded Big 5 data from CSV file"""
     try:
-        # Debug: Check if file exists and list files
+        # Read the file without assuming header structure
         import os
-        st.write("🔍 **Debug Info:**")
-        st.write(f"Current working directory: {os.getcwd()}")
-        st.write(f"Files in directory: {os.listdir('.')}")
         
         # Try different file paths
-        possible_paths = [
-            'big5_data.csv',
-            './big5_data.csv',
-            'data/big5_data.csv'
-        ]
+        possible_paths = ['big5_data.csv', './big5_data.csv', 'data/big5_data.csv']
         
         df = None
         successful_path = None
@@ -27,79 +20,99 @@ def load_preloaded_data():
                 if os.path.exists(path):
                     st.write(f"✅ Found file at: {path}")
                     
-                    # Read the raw file to handle FBRef's complex header structure
-                    raw_df = pd.read_csv(path)
-                    st.write("📋 **Raw CSV structure:**")
-                    st.write("First 5 rows:", raw_df.head())
+                    # Read the entire file as text first to analyze structure
+                    with open(path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
                     
-                    # Find the actual header row (look for row with 'Age', '90s', etc.)
-                    header_row_idx = None
-                    for idx, row in raw_df.iterrows():
-                        row_values = [str(val).strip() for val in row.values if pd.notna(val)]
-                        if any(col in row_values for col in ['Age', '90s', 'Pos', 'Player']):
-                            header_row_idx = idx
-                            st.write(f"✅ Found header row at index: {idx}")
-                            st.write(f"Header values: {row_values}")
+                    st.write(f"📄 File has {len(lines)} lines")
+                    st.write("🔍 **First 5 lines:**")
+                    for i, line in enumerate(lines[:5]):
+                        st.write(f"Line {i}: {line.strip()}")
+                    
+                    # Find the header row (contains Player, Age, Pos, etc.)
+                    header_line_idx = None
+                    for i, line in enumerate(lines):
+                        if 'Player' in line and 'Age' in line and 'Pos' in line:
+                            header_line_idx = i
+                            st.write(f"✅ Found header at line {i}")
                             break
                     
-                    if header_row_idx is not None:
-                        # Re-read with correct header
-                        df = pd.read_csv(path, header=header_row_idx)
-                        st.write("✅ Successfully parsed with correct header")
-                        st.write("New columns:", df.columns.tolist())
+                    if header_line_idx is not None:
+                        # Read CSV starting from the header line
+                        df = pd.read_csv(path, skiprows=header_line_idx)
+                        st.write("✅ Loaded with header row detection")
                     else:
-                        # Fallback: use the raw data and try to clean it
-                        df = raw_df.copy()
-                        st.warning("⚠️ Could not find standard header row, using raw data")
+                        # Fallback: try to read normally and fix manually
+                        df = pd.read_csv(path, header=None)
+                        # Look for the row with proper column names
+                        for idx in range(min(10, len(df))):
+                            row_values = df.iloc[idx].astype(str).tolist()
+                            if 'Player' in row_values and 'Age' in row_values:
+                                st.write(f"✅ Found header data in row {idx}")
+                                # Set this row as column names
+                                df.columns = df.iloc[idx]
+                                # Remove rows up to and including the header row
+                                df = df.iloc[idx+1:].reset_index(drop=True)
+                                break
+                        else:
+                            st.error("❌ Could not find proper header row")
+                            return pd.DataFrame()
                     
                     successful_path = path
                     break
-                else:
-                    st.write(f"❌ File not found at: {path}")
+                    
             except Exception as e:
                 st.write(f"❌ Error reading {path}: {e}")
         
         if df is None:
-            st.error("❌ Could not find big5_data.csv in any expected location")
+            st.error("❌ Could not load data file")
             return pd.DataFrame()
         
-        st.success(f"✅ Successfully loaded data from: {successful_path}")
+        st.success(f"✅ Successfully loaded from: {successful_path}")
+        st.write("📋 **Detected columns:**", df.columns.tolist())
+        st.write("📊 **Dataset shape:**", df.shape)
         
         # Clean the data
-        # Remove any completely empty rows
-        df = df.dropna(how='all')
-        
-        # Remove rows where the first column (usually Player) is NaN or contains header text
+        # Remove any rows that are just headers repeated
         if 'Player' in df.columns:
+            df = df[df['Player'] != 'Player']
             df = df[df['Player'].notna()]
-            df = df[df['Player'] != 'Player']  # Remove header repeats
+        
+        # Show sample of cleaned data
+        st.write("🧹 **Cleaned data sample:**")
+        st.dataframe(df.head(3))
         
         # Convert numeric columns
-        numeric_cols = ['Age', '90s', 'PrgDist', 'PrgP']
+        numeric_cols = ['Age', '90s']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
+                st.write(f"✅ Converted {col} to numeric")
+        
+        # Look for progressive distance column (might have different name)
+        prgdist_candidates = [col for col in df.columns if 'prg' in col.lower() or 'prog' in col.lower()]
+        if prgdist_candidates:
+            st.write(f"🎯 Found progressive columns: {prgdist_candidates}")
+            # Use the first one and rename it
+            df['PrgDist'] = pd.to_numeric(df[prgdist_candidates[0]], errors='coerce')
         
         # Handle league information
         if 'Comp' in df.columns:
             df['League'] = df['Comp']
-        elif 'Squad' in df.columns and 'League' not in df.columns:
+            st.write("✅ Using 'Comp' column for league information")
+        elif 'Squad' in df.columns:
             df['League'] = df['Squad'].apply(infer_league_from_squad)
-        elif 'League' not in df.columns:
-            df['League'] = 'Unknown'
+            st.write("✅ Inferred league from squad names")
         
-        st.write(f"📊 Final dataset: {len(df)} players")
+        st.write(f"📊 **Final dataset:** {len(df)} players")
         st.write("📋 **Final columns:**", df.columns.tolist())
         
         return df
         
     except Exception as e:
         st.error(f"❌ Error loading preloaded data: {e}")
-        st.write("**Troubleshooting tips:**")
-        st.write("1. Make sure 'big5_data.csv' is in your GitHub repo root directory")
-        st.write("2. Check that the file name is exactly 'big5_data.csv' (case sensitive)")
-        st.write("3. Verify the CSV file is properly formatted")
-        st.write("4. Try unchecking 'Use preloaded data' and upload manually")
+        import traceback
+        st.write("**Full error:**", traceback.format_exc())
         return pd.DataFrame()
 
 def infer_league_from_squad(squad_name):
