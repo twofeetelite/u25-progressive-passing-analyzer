@@ -6,41 +6,28 @@ import io
 def load_preloaded_data():
     """Load preloaded Big 5 data from CSV file"""
     try:
-        # Read the file without assuming header structure
-        import os
-        
         # Try different file paths
         possible_paths = ['big5_data.csv', './big5_data.csv', 'data/big5_data.csv']
         
         df = None
-        successful_path = None
         
         for path in possible_paths:
             try:
                 if os.path.exists(path):
-                    st.write(f"✅ Found file at: {path}")
-                    
                     # Read the entire file as text first to analyze structure
                     with open(path, 'r', encoding='utf-8') as f:
                         lines = f.readlines()
-                    
-                    st.write(f"📄 File has {len(lines)} lines")
-                    st.write("🔍 **First 5 lines:**")
-                    for i, line in enumerate(lines[:5]):
-                        st.write(f"Line {i}: {line.strip()}")
                     
                     # Find the header row (contains Player, Age, Pos, etc.)
                     header_line_idx = None
                     for i, line in enumerate(lines):
                         if 'Player' in line and 'Age' in line and 'Pos' in line:
                             header_line_idx = i
-                            st.write(f"✅ Found header at line {i}")
                             break
                     
                     if header_line_idx is not None:
                         # Read CSV starting from the header line
                         df = pd.read_csv(path, skiprows=header_line_idx)
-                        st.write("✅ Loaded with header row detection")
                     else:
                         # Fallback: try to read normally and fix manually
                         df = pd.read_csv(path, header=None)
@@ -48,71 +35,46 @@ def load_preloaded_data():
                         for idx in range(min(10, len(df))):
                             row_values = df.iloc[idx].astype(str).tolist()
                             if 'Player' in row_values and 'Age' in row_values:
-                                st.write(f"✅ Found header data in row {idx}")
                                 # Set this row as column names
                                 df.columns = df.iloc[idx]
                                 # Remove rows up to and including the header row
                                 df = df.iloc[idx+1:].reset_index(drop=True)
                                 break
                         else:
-                            st.error("❌ Could not find proper header row")
-                            return pd.DataFrame()
-                    
-                    successful_path = path
+                            continue
                     break
                     
-            except Exception as e:
-                st.write(f"❌ Error reading {path}: {e}")
+            except Exception:
+                continue
         
         if df is None:
-            st.error("❌ Could not load data file")
             return pd.DataFrame()
         
-        st.success(f"✅ Successfully loaded from: {successful_path}")
-        st.write("📋 **Detected columns:**", df.columns.tolist())
-        st.write("📊 **Dataset shape:**", df.shape)
-        
         # Clean the data
-        # Remove any rows that are just headers repeated
         if 'Player' in df.columns:
             df = df[df['Player'] != 'Player']
             df = df[df['Player'].notna()]
-        
-        # Show sample of cleaned data
-        st.write("🧹 **Cleaned data sample:**")
-        st.dataframe(df.head(3))
         
         # Convert numeric columns
         numeric_cols = ['Age', '90s']
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-                st.write(f"✅ Converted {col} to numeric")
         
-        # Look for progressive distance column (might have different name)
+        # Look for progressive distance column
         prgdist_candidates = [col for col in df.columns if 'prg' in col.lower() or 'prog' in col.lower()]
         if prgdist_candidates:
-            st.write(f"🎯 Found progressive columns: {prgdist_candidates}")
-            # Use the first one and rename it
             df['PrgDist'] = pd.to_numeric(df[prgdist_candidates[0]], errors='coerce')
         
         # Handle league information
         if 'Comp' in df.columns:
             df['League'] = df['Comp']
-            st.write("✅ Using 'Comp' column for league information")
         elif 'Squad' in df.columns:
             df['League'] = df['Squad'].apply(infer_league_from_squad)
-            st.write("✅ Inferred league from squad names")
-        
-        st.write(f"📊 **Final dataset:** {len(df)} players")
-        st.write("📋 **Final columns:**", df.columns.tolist())
         
         return df
         
-    except Exception as e:
-        st.error(f"❌ Error loading preloaded data: {e}")
-        import traceback
-        st.write("**Full error:**", traceback.format_exc())
+    except Exception:
         return pd.DataFrame()
 
 def infer_league_from_squad(squad_name):
