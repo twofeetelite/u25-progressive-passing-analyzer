@@ -2,6 +2,78 @@ import streamlit as st
 import pandas as pd
 import io
 
+@st.cache_data
+def load_preloaded_data():
+    """Load preloaded Big 5 data from CSV file"""
+    try:
+        # Load the preloaded Big 5 data
+        df = pd.read_csv('big5_data.csv')
+        
+        # Convert numeric columns
+        numeric_cols = ['Age', '90s', 'PrgDist', 'PrgP']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Ensure League column exists (infer from squad if needed)
+        if 'League' not in df.columns and 'Squad' in df.columns:
+            df['League'] = df['Squad'].apply(infer_league_from_squad)
+        
+        return df
+    except FileNotFoundError:
+        st.error("❌ Big 5 data file not found. Please upload your own data.")
+        return pd.DataFrame()
+    except Exception as e:
+        st.error(f"❌ Error loading preloaded data: {e}")
+        return pd.DataFrame()
+
+def infer_league_from_squad(squad_name):
+    """Infer league from squad name"""
+    if pd.isna(squad_name):
+        return 'Unknown'
+    
+    squad = str(squad_name).strip()
+    
+    # Premier League teams
+    pl_teams = ['Arsenal', 'Chelsea', 'Liverpool', 'Manchester City', 'Manchester Utd', 
+               'Tottenham', 'Newcastle Utd', 'Brighton', 'Aston Villa', 'West Ham',
+               'Crystal Palace', 'Fulham', 'Wolves', 'Everton', 'Brentford',
+               'Nott\'ham Forest', 'Sheffield Utd', 'Burnley', 'Luton Town', 'Bournemouth']
+    
+    # La Liga teams
+    laliga_teams = ['Real Madrid', 'Barcelona', 'Atlético Madrid', 'Sevilla', 'Real Sociedad',
+                   'Betis', 'Villarreal', 'Valencia', 'Athletic Club', 'Espanyol',
+                   'Getafe', 'Osasuna', 'Celta Vigo', 'Mallorca', 'Cádiz']
+    
+    # Bundesliga teams  
+    bundesliga_teams = ['Bayern Munich', 'Dortmund', 'RB Leipzig', 'Union Berlin', 'Freiburg',
+                       'Bayer Leverkusen', 'Eintracht Frankfurt', 'Wolfsburg', 'Mainz 05',
+                       'Borussia Mönchengladbach', 'Köln', 'Augsburg', 'Werder Bremen',
+                       'Schalke 04', 'Hoffenheim', 'VfB Stuttgart', 'Hertha BSC']
+    
+    # Serie A teams
+    seria_teams = ['Juventus', 'Inter', 'AC Milan', 'Napoli', 'Lazio', 'Roma', 'Atalanta',
+                  'Fiorentina', 'Torino', 'Sassuolo', 'Udinese', 'Bologna', 'Empoli',
+                  'Monza', 'Lecce', 'Cagliari', 'Genoa', 'Frosinone', 'Salernitana', 'Verona']
+    
+    # Ligue 1 teams
+    ligue1_teams = ['Paris S-G', 'Marseille', 'Monaco', 'Lille', 'Rennes', 'Nice', 'Lyon',
+                   'Montpellier', 'Lens', 'Strasbourg', 'Nantes', 'Reims', 'Toulouse',
+                   'Lorient', 'Le Havre', 'Metz', 'Brest', 'Clermont Foot']
+    
+    if squad in pl_teams:
+        return 'Premier League'
+    elif squad in laliga_teams:
+        return 'La Liga'
+    elif squad in bundesliga_teams:
+        return 'Bundesliga'
+    elif squad in seria_teams:
+        return 'Serie A'
+    elif squad in ligue1_teams:
+        return 'Ligue 1'
+    else:
+        return 'Unknown'
+
 def process_fbref_progressive_data(uploaded_file):
     """Process FBRef Progressive Passing CSV with specific format"""
     try:
@@ -47,53 +119,7 @@ def process_fbref_progressive_data(uploaded_file):
             df['League'] = df['Comp']
         elif 'Squad' in df.columns:
             # Try to infer league from well-known squad names
-            def infer_league(squad_name):
-                if pd.isna(squad_name):
-                    return 'Unknown'
-                
-                squad = str(squad_name).strip()
-                
-                # Premier League teams
-                pl_teams = ['Arsenal', 'Chelsea', 'Liverpool', 'Manchester City', 'Manchester Utd', 
-                           'Tottenham', 'Newcastle Utd', 'Brighton', 'Aston Villa', 'West Ham',
-                           'Crystal Palace', 'Fulham', 'Wolves', 'Everton', 'Brentford',
-                           'Nott\'ham Forest', 'Sheffield Utd', 'Burnley', 'Luton Town', 'Bournemouth']
-                
-                # La Liga teams
-                laliga_teams = ['Real Madrid', 'Barcelona', 'Atlético Madrid', 'Sevilla', 'Real Sociedad',
-                               'Betis', 'Villarreal', 'Valencia', 'Athletic Club', 'Espanyol',
-                               'Getafe', 'Osasuna', 'Celta Vigo', 'Mallorca', 'Cádiz']
-                
-                # Bundesliga teams  
-                bundesliga_teams = ['Bayern Munich', 'Dortmund', 'RB Leipzig', 'Union Berlin', 'Freiburg',
-                                   'Bayer Leverkusen', 'Eintracht Frankfurt', 'Wolfsburg', 'Mainz 05',
-                                   'Borussia Mönchengladbach', 'Köln', 'Augsburg', 'Werder Bremen',
-                                   'Schalke 04', 'Hoffenheim', 'VfB Stuttgart', 'Hertha BSC']
-                
-                # Serie A teams
-                seria_teams = ['Juventus', 'Inter', 'AC Milan', 'Napoli', 'Lazio', 'Roma', 'Atalanta',
-                              'Fiorentina', 'Torino', 'Sassuolo', 'Udinese', 'Bologna', 'Empoli',
-                              'Monza', 'Lecce', 'Cagliari', 'Genoa', 'Frosinone', 'Salernitana', 'Verona']
-                
-                # Ligue 1 teams
-                ligue1_teams = ['Paris S-G', 'Marseille', 'Monaco', 'Lille', 'Rennes', 'Nice', 'Lyon',
-                               'Montpellier', 'Lens', 'Strasbourg', 'Nantes', 'Reims', 'Toulouse',
-                               'Lorient', 'Le Havre', 'Metz', 'Brest', 'Clermont Foot']
-                
-                if squad in pl_teams:
-                    return 'Premier League'
-                elif squad in laliga_teams:
-                    return 'La Liga'
-                elif squad in bundesliga_teams:
-                    return 'Bundesliga'
-                elif squad in seria_teams:
-                    return 'Serie A'
-                elif squad in ligue1_teams:
-                    return 'Ligue 1'
-                else:
-                    return 'Unknown'
-            
-            df['League'] = df['Squad'].apply(infer_league)
+            df['League'] = df['Squad'].apply(infer_league_from_squad)
         else:
             # Default league column
             df['League'] = 'Unknown'
@@ -136,10 +162,18 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
 
 def main():
     st.title("🎯 U-25 Midfielders: Progressive Distance Leaders")
-    st.markdown("*Upload FBRef Progressive Passing CSV files from multiple leagues to analyze young midfielders by progressive distance*")
+    st.markdown("*Analyze young midfielders by progressive distance across Europe's Big 5 leagues*")
     
     # Sidebar for settings
     st.sidebar.header("⚙️ Analysis Settings")
+    
+    # Data source selection
+    st.sidebar.subheader("📊 Data Source")
+    use_preloaded_data = st.sidebar.checkbox(
+        "Use preloaded Big 5 data", 
+        value=True,
+        help="Toggle off to upload your own data instead"
+    )
     
     # Filter settings in sidebar
     min_90s = st.sidebar.slider(
@@ -157,6 +191,16 @@ def main():
         value=25
     )
     
+    # League filter for preloaded data
+    if use_preloaded_data:
+        st.sidebar.subheader("🏆 League Filter")
+        available_leagues = ['All Leagues', 'Premier League', 'La Liga', 'Bundesliga', 'Serie A', 'Ligue 1']
+        selected_league_filter = st.sidebar.selectbox(
+            "Filter by league",
+            available_leagues,
+            help="Select a specific league to analyze or 'All Leagues' for combined view"
+        )
+    
     # Display settings
     st.sidebar.subheader("📊 Display Options")
     show_top_3 = st.sidebar.checkbox("Show Top 3 Summary", value=True)
@@ -172,170 +216,219 @@ def main():
         step=10
     )
     
-    # Instructions
-    with st.expander("📋 How to Use"):
-        st.markdown("""
-        **Upload FBRef Progressive Passing CSV files for analysis:**
+    # Handle data source
+    if use_preloaded_data:
+        st.info("🌍 **Using preloaded Big 5 leagues data** - Toggle off in sidebar to upload your own data")
         
-        **Option 1: Big 5 Combined (Easiest)**
-        1. **Go to FBRef Big 5 European Leagues page**
-        2. **Navigate to Passing stats** 
-        3. **Copy the progressive passing table** and paste into Excel/Google Sheets
-        4. **Save as CSV** and upload to "Big 5 Combined" uploader
+        # Load preloaded data
+        preloaded_df = load_preloaded_data()
         
-        **Option 2: Individual Leagues**
-        1. **Go to individual league pages** (Premier League, La Liga, etc.)
-        2. **Follow same process** for each league you want to analyze
-        3. **Upload to corresponding league uploaders**
-        
-        **The app will automatically:**
-        - Find U-25 players whose **primary position is MF** (excludes "DF,MF", "FW,MF")
-        - Filter for players with at least the specified 90s
-        - Sort by **Progressive Distance (PrgDist)** - highest first
-        - For Big 5 data: Automatically detect league from squad names
-        - Combine data from all uploaded sources
-        """)
-    
-    # File uploaders for all five leagues + Big 5 combined
-    st.subheader("📁 Upload League Data")
-    
-    # Big 5 Combined option
-    st.markdown("### 🌍 Big 5 Combined (Recommended)")
-    big5_file = st.file_uploader(
-        "🌍 Big 5 Leagues Combined", 
-        type=['csv'],
-        key="upload_big5_combined",
-        help="Upload the combined Big 5 leagues progressive passing CSV from FBRef"
-    )
-    
-    uploaded_files = {}
-    if big5_file:
-        uploaded_files['Big 5 Combined'] = big5_file
-    
-    # Separator
-    st.markdown("---")
-    st.markdown("### 🏆 Individual Leagues")
-    st.markdown("*Use these if you want to analyze specific leagues separately*")
-    
-    leagues = {
-        'Premier League': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-        'La Liga': '🇪🇸', 
-        'Bundesliga': '🇩🇪',
-        'Serie A': '🇮🇹',
-        'Ligue 1': '🇫🇷'
-    }
-    
-    # Create two columns for individual league uploaders
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("##### European Leagues")
-        for i, (league, flag) in enumerate(list(leagues.items())[:2]):
-            uploaded_file = st.file_uploader(
-                f"{flag} {league}", 
-                type=['csv'],
-                key=f"upload_{league.replace(' ', '_').lower()}",
-                help=f"Upload progressive passing CSV for {league}"
-            )
-            if uploaded_file:
-                uploaded_files[league] = uploaded_file
-    
-    with col2:
-        st.markdown("##### German & Italian")
-        for i, (league, flag) in enumerate(list(leagues.items())[2:4]):
-            uploaded_file = st.file_uploader(
-                f"{flag} {league}", 
-                type=['csv'],
-                key=f"upload_{league.replace(' ', '_').lower()}",
-                help=f"Upload progressive passing CSV for {league}"
-            )
-            if uploaded_file:
-                uploaded_files[league] = uploaded_file
-    
-    with col3:
-        st.markdown("##### French League")
-        league, flag = list(leagues.items())[4]
-        uploaded_file = st.file_uploader(
-            f"{flag} {league}", 
-            type=['csv'],
-            key=f"upload_{league.replace(' ', '_').lower()}",
-            help=f"Upload progressive passing CSV for {league}"
-        )
-        if uploaded_file:
-            uploaded_files[league] = uploaded_file
-    
-    # Show upload status
-    if uploaded_files:
-        if 'Big 5 Combined' in uploaded_files:
-            st.success(f"✅ **Big 5 Combined dataset uploaded!**")
-            if len(uploaded_files) > 1:
-                other_leagues = [k for k in uploaded_files.keys() if k != 'Big 5 Combined']
-                st.info(f"ℹ️ Also uploaded: {', '.join(other_leagues)}")
+        if not preloaded_df.empty:
+            # Apply league filter if not "All Leagues"
+            if selected_league_filter != 'All Leagues':
+                filtered_preloaded = preloaded_df[preloaded_df['League'] == selected_league_filter].copy()
+                st.success(f"📊 **Analyzing {selected_league_filter}** - {len(filtered_preloaded)} players in dataset")
+            else:
+                filtered_preloaded = preloaded_df.copy()
+                st.success(f"📊 **Analyzing all Big 5 leagues** - {len(filtered_preloaded)} players in dataset")
+            
+            # Show league breakdown for "All Leagues"
+            if selected_league_filter == 'All Leagues' and 'League' in filtered_preloaded.columns:
+                league_counts = filtered_preloaded['League'].value_counts()
+                st.write("**League breakdown:**")
+                cols = st.columns(len(league_counts))
+                for i, (league, count) in enumerate(league_counts.items()):
+                    with cols[i]:
+                        st.metric(league, count, "players")
+            
+            # Process the data
+            uploaded_files = {'Preloaded Data': filtered_preloaded}
         else:
-            st.success(f"✅ **{len(uploaded_files)} individual league(s) uploaded:** {', '.join(uploaded_files.keys())}")
-    else:
-        st.info("👆 Upload the Big 5 Combined dataset OR individual league CSVs to begin analysis")
+            uploaded_files = {}
+            st.error("❌ Could not load preloaded data. Please upload your own data.")
     
-    # Process uploaded files
+    else:
+        # Instructions for manual upload
+        with st.expander("📋 How to Upload Your Own Data"):
+            st.markdown("""
+            **Upload FBRef Progressive Passing CSV files for analysis:**
+            
+            **Option 1: Big 5 Combined (Easiest)**
+            1. **Go to FBRef Big 5 European Leagues page**
+            2. **Navigate to Passing stats** 
+            3. **Copy the progressive passing table** and paste into Excel/Google Sheets
+            4. **Save as CSV** and upload to "Big 5 Combined" uploader
+            
+            **Option 2: Individual Leagues**
+            1. **Go to individual league pages** (Premier League, La Liga, etc.)
+            2. **Follow same process** for each league you want to analyze
+            3. **Upload to corresponding league uploaders**
+            
+            **The app will automatically:**
+            - Find U-25 players whose **primary position is MF** (excludes "DF,MF", "FW,MF")
+            - Filter for players with at least the specified 90s
+            - Sort by **Progressive Distance (PrgDist)** - highest first
+            - For Big 5 data: Automatically detect league from squad names
+            - Combine data from all uploaded sources
+            """)
+        
+        # File uploaders for manual upload
+        st.subheader("📁 Upload League Data")
+        
+        # Big 5 Combined option
+        st.markdown("### 🌍 Big 5 Combined (Recommended)")
+        big5_file = st.file_uploader(
+            "🌍 Big 5 Leagues Combined", 
+            type=['csv'],
+            key="upload_big5_combined",
+            help="Upload the combined Big 5 leagues progressive passing CSV from FBRef"
+        )
+        
+        uploaded_files = {}
+        if big5_file:
+            uploaded_files['Big 5 Combined'] = big5_file
+        
+        # Separator
+        st.markdown("---")
+        st.markdown("### 🏆 Individual Leagues")
+        st.markdown("*Use these if you want to analyze specific leagues separately*")
+        
+        leagues = {
+            'Premier League': '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+            'La Liga': '🇪🇸', 
+            'Bundesliga': '🇩🇪',
+            'Serie A': '🇮🇹',
+            'Ligue 1': '🇫🇷'
+        }
+        
+        # Create two columns for individual league uploaders
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("##### European Leagues")
+            for i, (league, flag) in enumerate(list(leagues.items())[:2]):
+                uploaded_file = st.file_uploader(
+                    f"{flag} {league}", 
+                    type=['csv'],
+                    key=f"upload_{league.replace(' ', '_').lower()}",
+                    help=f"Upload progressive passing CSV for {league}"
+                )
+                if uploaded_file:
+                    uploaded_files[league] = uploaded_file
+        
+        with col2:
+            st.markdown("##### German & Italian")
+            for i, (league, flag) in enumerate(list(leagues.items())[2:4]):
+                uploaded_file = st.file_uploader(
+                    f"{flag} {league}", 
+                    type=['csv'],
+                    key=f"upload_{league.replace(' ', '_').lower()}",
+                    help=f"Upload progressive passing CSV for {league}"
+                )
+                if uploaded_file:
+                    uploaded_files[league] = uploaded_file
+        
+        with col3:
+            st.markdown("##### French League")
+            league, flag = list(leagues.items())[4]
+            uploaded_file = st.file_uploader(
+                f"{flag} {league}", 
+                type=['csv'],
+                key=f"upload_{league.replace(' ', '_').lower()}",
+                help=f"Upload progressive passing CSV for {league}"
+            )
+            if uploaded_file:
+                uploaded_files[league] = uploaded_file
+        
+        # Show upload status for manual uploads
+        if uploaded_files:
+            if 'Big 5 Combined' in uploaded_files:
+                st.success(f"✅ **Big 5 Combined dataset uploaded!**")
+                if len(uploaded_files) > 1:
+                    other_leagues = [k for k in uploaded_files.keys() if k != 'Big 5 Combined']
+                    st.info(f"ℹ️ Also uploaded: {', '.join(other_leagues)}")
+            else:
+                st.success(f"✅ **{len(uploaded_files)} individual league(s) uploaded:** {', '.join(uploaded_files.keys())}")
+        else:
+            st.info("👆 Upload the Big 5 Combined dataset OR individual league CSVs to begin analysis")
+    
+    # Process data (either preloaded or uploaded)
     if uploaded_files:
         all_data = []
         
-        st.subheader("📊 Processing Results")
-        
-        for league_name, uploaded_file in uploaded_files.items():
-            with st.expander(f"🔍 {league_name} Analysis", expanded=False):
-                df = process_fbref_progressive_data(uploaded_file)
-                
-                if not df.empty:
-                    st.success(f"✅ Successfully loaded {len(df)} players from {league_name}")
-                    
-                    # For Big 5 combined, show league breakdown
-                    if league_name == 'Big 5 Combined' and 'League' in df.columns:
-                        league_counts = df['League'].value_counts()
-                        st.write("**League breakdown in dataset:**")
-                        for league, count in league_counts.items():
-                            st.write(f"- {league}: {count} players")
-                    
-                    # Filter the data
+        # Skip the detailed processing section for preloaded data
+        if use_preloaded_data:
+            # For preloaded data, directly process without showing detailed breakdown
+            for dataset_name, df in uploaded_files.items():
+                if isinstance(df, pd.DataFrame):  # It's already a DataFrame
                     filtered_df = filter_and_analyze(df, min_90s, max_age)
-                    
                     if not filtered_df.empty:
-                        # For individual leagues, add league column if not present
-                        if 'League' not in filtered_df.columns or league_name != 'Big 5 Combined':
-                            filtered_df['League'] = league_name
-                        
                         all_data.append(filtered_df)
+        else:
+            # Show detailed processing for uploaded data
+            st.subheader("📊 Processing Results")
+            
+            for league_name, uploaded_file in uploaded_files.items():
+                with st.expander(f"🔍 {league_name} Analysis", expanded=False):
+                    df = process_fbref_progressive_data(uploaded_file)
+                    
+                    if not df.empty:
+                        st.success(f"✅ Successfully loaded {len(df)} players from {league_name}")
                         
-                        st.write(f"**Found {len(filtered_df)} qualifying players in {league_name}**")
-                        
-                        # Show breakdown by league for Big 5 combined
-                        if league_name == 'Big 5 Combined' and 'League' in filtered_df.columns:
-                            league_breakdown = filtered_df['League'].value_counts()
-                            st.write("**Qualifying players by league:**")
-                            for league, count in league_breakdown.items():
+                        # For Big 5 combined, show league breakdown
+                        if league_name == 'Big 5 Combined' and 'League' in df.columns:
+                            league_counts = df['League'].value_counts()
+                            st.write("**League breakdown in dataset:**")
+                            for league, count in league_counts.items():
                                 st.write(f"- {league}: {count} players")
                         
-                        # Show top 3 from this dataset
-                        top_3_league = filtered_df.head(3)
-                        st.write(f"**Top 3 in {league_name}:**")
-                        for i, (_, player) in enumerate(top_3_league.iterrows()):
-                            league_info = f" ({player['League']})" if 'League' in player and league_name == 'Big 5 Combined' else ""
-                            st.write(f"{i+1}. {player['Player']} ({player['Squad']}){league_info} - {player['PrgDist']:.1f} PrgDist")
+                        # Filter the data
+                        filtered_df = filter_and_analyze(df, min_90s, max_age)
+                        
+                        if not filtered_df.empty:
+                            # For individual leagues, add league column if not present
+                            if 'League' not in filtered_df.columns or league_name != 'Big 5 Combined':
+                                filtered_df['League'] = league_name
+                            
+                            all_data.append(filtered_df)
+                            
+                            st.write(f"**Found {len(filtered_df)} qualifying players in {league_name}**")
+                            
+                            # Show breakdown by league for Big 5 combined
+                            if league_name == 'Big 5 Combined' and 'League' in filtered_df.columns:
+                                league_breakdown = filtered_df['League'].value_counts()
+                                st.write("**Qualifying players by league:**")
+                                for league, count in league_breakdown.items():
+                                    st.write(f"- {league}: {count} players")
+                            
+                            # Show top 3 from this dataset
+                            top_3_league = filtered_df.head(3)
+                            st.write(f"**Top 3 in {league_name}:**")
+                            for i, (_, player) in enumerate(top_3_league.iterrows()):
+                                league_info = f" ({player['League']})" if 'League' in player and league_name == 'Big 5 Combined' else ""
+                                st.write(f"{i+1}. {player['Player']} ({player['Squad']}){league_info} - {player['PrgDist']:.1f} PrgDist")
+                        else:
+                            st.warning(f"⚠️ No qualifying players found in {league_name}")
                     else:
-                        st.warning(f"⚠️ No qualifying players found in {league_name}")
-                else:
-                    st.error(f"❌ Could not process {league_name} data")
+                        st.error(f"❌ Could not process {league_name} data")
         
         # Combined analysis
         if all_data:
-            st.subheader("🏆 Combined Analysis: All Leagues")
+            # Title based on data source and filter
+            if use_preloaded_data and selected_league_filter != 'All Leagues':
+                st.subheader(f"🏆 {selected_league_filter} Analysis")
+            else:
+                st.subheader("🏆 Combined Analysis: All Leagues")
             
             # Combine all dataframes
             combined_df = pd.concat(all_data, ignore_index=True)
             combined_df = combined_df.sort_values('PrgDist', ascending=False)
             combined_df['Overall_Rank'] = range(1, len(combined_df) + 1)
             
-            st.success(f"**Total: {len(combined_df)} qualifying U-{max_age} midfielders across all leagues**")
+            if use_preloaded_data and selected_league_filter != 'All Leagues':
+                st.success(f"**Total: {len(combined_df)} qualifying U-{max_age} midfielders in {selected_league_filter}**")
+            else:
+                st.success(f"**Total: {len(combined_df)} qualifying U-{max_age} midfielders across all leagues**")
             
             # Top performers summary
             if show_top_3 and len(combined_df) >= 3:
@@ -394,8 +487,8 @@ def main():
                 }
             )
             
-            # League comparison
-            if show_league_comparison and len(uploaded_files) > 1:
+            # League comparison (only show if multiple leagues or "All Leagues" selected)
+            if show_league_comparison and (not use_preloaded_data and len(uploaded_files) > 1 or use_preloaded_data and selected_league_filter == 'All Leagues'):
                 st.subheader("🌍 League Comparison")
                 
                 league_stats = combined_df.groupby('League').agg({
@@ -464,10 +557,16 @@ def main():
                 )
             
             with col4:
-                st.metric(
-                    "Leagues Analyzed", 
-                    len(uploaded_files)
-                )
+                if use_preloaded_data and selected_league_filter != 'All Leagues':
+                    st.metric(
+                        "League Analyzed", 
+                        selected_league_filter
+                    )
+                else:
+                    st.metric(
+                        "Leagues Analyzed", 
+                        len(uploaded_files) if not use_preloaded_data else len(combined_df['League'].unique())
+                    )
             
             # Download options
             st.subheader("📥 Download Results")
@@ -495,7 +594,12 @@ def main():
                 )
         
         else:
-            st.warning("⚠️ No valid data found in uploaded files. Please check the file formats.")
+            st.warning("⚠️ No valid data found. Please check your data source.")
+    else:
+        if use_preloaded_data:
+            st.info("👆 Preloaded data is ready! Adjust filters in the sidebar to analyze.")
+        else:
+            st.info("👆 Upload the Big 5 Combined dataset OR individual league CSVs to begin analysis")
     
     # Show current filter settings in sidebar
     st.sidebar.markdown("---")
@@ -505,7 +609,11 @@ def main():
     st.sidebar.write(f"• **Position:** Primary MF only")
     st.sidebar.write(f"• **Sort by:** Progressive Distance")
     
-    if uploaded_files:
+    if use_preloaded_data:
+        st.sidebar.write(f"• **Data Source:** Preloaded Big 5")
+        if selected_league_filter != 'All Leagues':
+            st.sidebar.write(f"• **League Filter:** {selected_league_filter}")
+    elif uploaded_files:
         st.sidebar.write(f"• **Leagues:** {len(uploaded_files)}")
         for league in uploaded_files.keys():
             st.sidebar.write(f"  - {league}")
