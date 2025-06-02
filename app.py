@@ -5,46 +5,61 @@ import io
 @st.cache_data
 def load_preloaded_data():
     """Load preloaded Big 5 data from CSV file"""
-    import os
-    
-    # Check if file exists
-    if not os.path.exists('big5_data.csv'):
-        st.error("❌ big5_data.csv not found in the app directory")
-        st.info("💡 Please uncheck 'Use preloaded data' and upload your CSV file manually")
-        return pd.DataFrame()
-    
     try:
-        # Read the entire file as text first to analyze structure
-        with open('big5_data.csv', 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        import os
         
-        # Find the header row (contains Player, Age, Pos, etc.)
-        header_line_idx = None
-        for i, line in enumerate(lines):
-            if 'Player' in line and 'Age' in line and 'Pos' in line:
-                header_line_idx = i
-                break
+        # Try different file paths (like the working version)
+        possible_paths = ['big5_data.csv', './big5_data.csv', 'data/big5_data.csv']
         
-        if header_line_idx is not None:
-            # Read CSV starting from the header line
-            df = pd.read_csv('big5_data.csv', skiprows=header_line_idx)
-        else:
-            # Fallback: try to read normally and fix manually
-            df = pd.read_csv('big5_data.csv', header=None)
-            # Look for the row with proper column names
-            for idx in range(min(10, len(df))):
-                row_values = df.iloc[idx].astype(str).tolist()
-                if 'Player' in row_values and 'Age' in row_values:
-                    # Set this row as column names
-                    df.columns = df.iloc[idx]
-                    # Remove rows up to and including the header row
-                    df = df.iloc[idx+1:].reset_index(drop=True)
+        df = None
+        successful_path = None
+        
+        for path in possible_paths:
+            try:
+                if os.path.exists(path):
+                    # Read the entire file as text first to analyze structure
+                    with open(path, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    
+                    # Find the header row (contains Player, Age, Pos, etc.)
+                    header_line_idx = None
+                    for i, line in enumerate(lines):
+                        if 'Player' in line and 'Age' in line and 'Pos' in line:
+                            header_line_idx = i
+                            break
+                    
+                    if header_line_idx is not None:
+                        # Read CSV starting from the header line
+                        df = pd.read_csv(path, skiprows=header_line_idx)
+                    else:
+                        # Fallback: try to read normally and fix manually
+                        df = pd.read_csv(path, header=None)
+                        # Look for the row with proper column names
+                        for idx in range(min(10, len(df))):
+                            row_values = df.iloc[idx].astype(str).tolist()
+                            if 'Player' in row_values and 'Age' in row_values:
+                                # Set this row as column names
+                                df.columns = df.iloc[idx]
+                                # Remove rows up to and including the header row
+                                df = df.iloc[idx+1:].reset_index(drop=True)
+                                break
+                        else:
+                            continue  # Try next path if this doesn't work
+                    
+                    successful_path = path
                     break
-            else:
-                st.error("❌ Could not find proper data structure in CSV file")
-                return pd.DataFrame()
+                    
+            except Exception as e:
+                continue  # Try next path if this fails
         
-        # Clean the data
+        if df is None:
+            # If we get here, none of the paths worked
+            st.error("❌ Could not find or load big5_data.csv")
+            st.info("💡 Please uncheck 'Use preloaded data' and upload your CSV manually")
+            return pd.DataFrame()
+        
+        # Clean the data (same as working version)
+        # Remove any rows that are just headers repeated
         if 'Player' in df.columns:
             df = df[df['Player'] != 'Player']
             df = df[df['Player'].notna()]
@@ -55,12 +70,13 @@ def load_preloaded_data():
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Look for progressive distance column
+        # Look for progressive distance column (might have different name)
         prgdist_candidates = [col for col in df.columns if 'prg' in col.lower() or 'prog' in col.lower()]
         if prgdist_candidates:
+            # Use the first one and rename it
             df['PrgDist'] = pd.to_numeric(df[prgdist_candidates[0]], errors='coerce')
         else:
-            st.error("❌ No progressive distance column found in the data")
+            st.error("❌ No progressive distance column found")
             return pd.DataFrame()
         
         # Handle league information
@@ -71,15 +87,10 @@ def load_preloaded_data():
         else:
             df['League'] = 'Unknown'
         
-        if len(df) == 0:
-            st.error("❌ No valid data found after processing")
-            return pd.DataFrame()
-        
         return df
         
     except Exception as e:
-        st.error(f"❌ Error loading CSV file: {str(e)}")
-        st.info("💡 Please try uploading your file manually instead")
+        st.error(f"❌ Error loading preloaded data: {e}")
         return pd.DataFrame()
 
 def infer_league_from_squad(squad_name):
@@ -210,7 +221,7 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
     
     # Apply filters
     filtered_df = df[
-        (df['Age'] < max_age) &  # U-25 players
+        (df['Age'] <= max_age) &  # U-25 players (25 and under)
         (df['90s'] >= min_90s) &  # At least specified 90s
         (df['Pos'].str.startswith('MF', na=False)) &  # Primary position is MF
         (df['PrgDist'].notna()) &  # Has progressive distance data
