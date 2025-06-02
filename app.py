@@ -241,6 +241,34 @@ def filter_and_analyze(df, min_90s=13, max_age=25):
     return filtered_df
 
 def main():
+    # Set custom CSS for Helvetica Neue font
+    st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    /* Use Helvetica Neue as primary font, with fallbacks */
+    html, body, [class*="css"] {
+        font-family: "Helvetica Neue", "Helvetica", "Arial", "Inter", sans-serif !important;
+    }
+    
+    /* Apply to all Streamlit components */
+    .stApp, .main .block-container, .stMarkdown, .stText, .stMetric, .stDataFrame {
+        font-family: "Helvetica Neue", "Helvetica", "Arial", "Inter", sans-serif !important;
+    }
+    
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        font-family: "Helvetica Neue", "Helvetica", "Arial", "Inter", sans-serif !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Sidebar */
+    .css-1d391kg, .css-1lcbmhc {
+        font-family: "Helvetica Neue", "Helvetica", "Arial", "Inter", sans-serif !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     st.title("🎯 U-25 Midfielders: Progressive Distance Leaders")
     st.markdown("*Analyze young midfielders by progressive distance across Europe's Big 5 leagues*")
     
